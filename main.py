@@ -1,6 +1,7 @@
 import pandas as pd
 import numpy as np
 import os
+from extraction.extract_info  import Extraction
 from utils import get_file_paths, createSqlQueryDerivedTables, createSqlQueryAliasTables, createSqlOriginalTables, filterAggregationFunctions
 from createNotebook import createNotebook
 from createForeignKeys import processJoinExpressions
@@ -12,10 +13,8 @@ output_path = os.path.join(main_dir, 'output')
 
 universesPaths = get_file_paths(input_path)
 
-schema = "teradata_migration"
-catalog = "report_test_data"
-
 for universe in universesPaths:
+    universe_file = Extraction(universe)
     # df con todas las tablas que tiene el universo (alias, derivadas y originales)
     dfTableDetails = pd.read_excel(universe, sheet_name="Table Details", engine="openpyxl", header=1)
     dfJoins = pd.read_excel(universe, sheet_name="Joins", engine="openpyxl", header=1)
