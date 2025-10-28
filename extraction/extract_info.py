@@ -1,6 +1,7 @@
 import pandas as pd
 from collections import defaultdict
 from typing import Dict, List
+from utils import createSqlQueryDerivedTables, createSqlQueryAliasTables, createSqlOriginalTables
 
 class Extraction():
     def __init__(self, path_file):
@@ -21,7 +22,7 @@ class Extraction():
             df = pd.read_excel(self.excel_file, sheet_name= col, engine="openpyxl", header= 1)
             self.excel_info[col] = df
     
-    def _build_sql(self, table_fields: List, table_name: str):
+    def _build_sql(self, table_fields: List, table_name: str) -> str:
         """
         """
         fields = table_fields[table_name]
@@ -97,3 +98,6 @@ class Extraction():
         filter_details = self.objects_details[(self.objects_details['Obj Where'].notna())].copy()
 
         foreignKeys = self._join_expressions()
+        derived_tables = createSqlQueryDerivedTables(self.table_details)
+        alias_tables = createSqlQueryAliasTables(self.table_details, objects_details_filtered,foreignKeys)
+        original_tables = createSqlOriginalTables(self.table_details, objects_details_filtered, foreignKeys)
