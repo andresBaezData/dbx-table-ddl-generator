@@ -15,8 +15,11 @@ universesPaths = get_file_paths(input_path)
 
 for universe in universesPaths:
     universe_file = Extraction(universe)
-    universe_file.get_info()
-    print(universe)
+    derived_tables, alias_tables = universe_file.get_info()
+    # Excel
+
+    # Notebook
+
     # df con todas las tablas que tiene el universo (alias, derivadas y originales)
     dfTableDetails = pd.read_excel(universe, sheet_name="Table Details", engine="openpyxl", header=1)
     dfJoins = pd.read_excel(universe, sheet_name="Joins", engine="openpyxl", header=1)

@@ -101,3 +101,5 @@ class Extraction():
         derived_tables = createSqlQueryDerivedTables(self.table_details)
         alias_tables = createSqlQueryAliasTables(self.table_details, objects_details_filtered,foreignKeys)
         original_tables = createSqlOriginalTables(self.table_details, objects_details_filtered, foreignKeys)
+
+        return derived_tables, alias_tables
