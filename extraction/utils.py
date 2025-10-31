@@ -1,16 +1,6 @@
-import os
 import re
 import pandas as pd
-import json
 from collections import defaultdict
-
-def get_file_paths(dir):
-    file_paths = []
-    for root, _, files in os.walk(dir):
-        for file in files:
-            if file.lower().endswith('.xlsx'):
-                file_paths.append(os.path.join(root, file))
-    return file_paths 
 
 #funcion que se encarga de llamar todas las funciones que limpian el select de cada objeto
 def cleanObjectSelect(string, dfObjectDetails):

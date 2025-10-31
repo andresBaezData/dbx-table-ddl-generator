@@ -1,7 +1,8 @@
 import pandas as pd
-import numpy as np
 import os
-from extraction.extract_info  import Extraction
+from pathlib import Path
+from extraction.extract_info import Extraction
+from generate_ntb.create_ntb import GenerateNotebook
 from utils import get_file_paths, createSqlQueryDerivedTables, createSqlQueryAliasTables, createSqlOriginalTables, filterAggregationFunctions
 from createNotebook import createNotebook
 from createForeignKeys import processJoinExpressions
@@ -11,14 +12,17 @@ main_dir = os.path.dirname(os.path.abspath(__file__))
 input_path = os.path.join(main_dir, 'input')
 output_path = os.path.join(main_dir, 'output')
 
-universesPaths = get_file_paths(input_path)
+universesPaths = [str(p) for p in Path(input_path).rglob('*.xlsx')]
 
 for universe in universesPaths:
     universe_file = Extraction(universe)
-    derived_tables, alias_tables = universe_file.get_info()
+    derived_tables, alias_tables, original_tables = universe_file.get_info()
+    print(universe)
     # Excel
 
     # Notebook
+    ntb = GenerateNotebook(derived_tables, alias_tables, original_tables)
+    ntb.generate_notebook()
 
     # df con todas las tablas que tiene el universo (alias, derivadas y originales)
     dfTableDetails = pd.read_excel(universe, sheet_name="Table Details", engine="openpyxl", header=1)

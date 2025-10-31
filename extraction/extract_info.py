@@ -44,7 +44,7 @@ class Extraction():
 
             for condition in conditions:
                 # Split each row by using '='
-                parts = [part.strip().strip('"') for part in condition.split('=', 1)]
+                parts = [part.strip() for part in condition.split('=', 1)]
 
                 # We are only admit 2 parts
                 if len(parts) != 2:
@@ -55,8 +55,8 @@ class Extraction():
                 if '.' not in left or '.' not in right:
                     continue
 
-                left_arr = left.split('.')
-                right_arr = right.split('.')
+                left_arr = [p.strip().strip('"') for p in left.split('.')]
+                right_arr = [p.strip().strip('"') for p in right.split('.')]
                 
                 fields_by_table[left_arr[-2]].append(left_arr[-1])
                 fields_by_table[right_arr[-2]].append(right_arr[-1])
@@ -102,4 +102,4 @@ class Extraction():
         alias_tables = createSqlQueryAliasTables(self.table_details, objects_details_filtered,foreignKeys)
         original_tables = createSqlOriginalTables(self.table_details, objects_details_filtered, foreignKeys)
 
-        return derived_tables, alias_tables
+        return derived_tables, alias_tables, original_tables

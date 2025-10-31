@@ -11,22 +11,26 @@ def processJoinExpressions(df_joins):
 
         for condition in conditions:
             # "separamos el codigo por "=" y "."
-            parts = [part.strip().strip('"') for part in condition.split('=', 1)]
+            parts = [part.strip() for part in condition.split('=', 1)]
+            
             if len(parts) != 2:
                 continue
             # separamos las igualdades en left y right
             left, right = parts
+            left_parts = [p.strip().strip('"') for p in left.split('.')]
+            right_parts = [p.strip().strip('"') for p in right.split('.')]
 
             #si en los dos lados se selecciona algun campo, se ejecuta el if, no se ejecuta si de algun lado de la condicción hay algun valor hardcodeado
-            if '.' not in left or '.' not in right:
-                continue
+            if '.' in left and '.' in right:
                 #extraemos el nombre de la tabla y del campo y los agregamos al diccionario
                 #hacemos eso para la parte izquierda y derecha de la igualdad
-            left_arr = left.split('.')
-            right_arr = right.split('.')
-            
-            fields_by_table[left_arr[-2]].append(left_arr[-1])
-            fields_by_table[right_arr[-2]].append(right_arr[-1])
+                #left_arr = left.split('.')
+                left_arr = [p.strip().strip('"') for p in left.split('.')]
+                fields_by_table[left_arr[-2]].append(left_arr[-1])
+
+                #right_arr = right.split('.')
+                right_arr = [p.strip().strip('"') for p in right.split('.')]
+                fields_by_table[right_arr[-2]].append(right_arr[-1])
 
         #una vez que ya sacamos los datos de las relaciones, los procesamos
         if len(fields_by_table) == 2:
