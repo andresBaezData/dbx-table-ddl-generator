@@ -1,7 +1,7 @@
 import pandas as pd
 from collections import defaultdict
 from typing import Dict, List
-from utils import createSqlQueryDerivedTables, createSqlQueryAliasTables, createSqlOriginalTables
+from .utils import createSqlQueryDerivedTables, createSqlQueryAliasTables, createSqlOriginalTables
 
 class Extraction():
     def __init__(self, path_file):

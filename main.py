@@ -3,7 +3,7 @@ import os
 from pathlib import Path
 from extraction.extract_info import Extraction
 from generate_ntb.create_ntb import GenerateNotebook
-from utils import get_file_paths, createSqlQueryDerivedTables, createSqlQueryAliasTables, createSqlOriginalTables, filterAggregationFunctions
+# from utils import get_file_paths, createSqlQueryDerivedTables, createSqlQueryAliasTables, createSqlOriginalTables, filterAggregationFunctions
 from createNotebook import createNotebook
 from createForeignKeys import processJoinExpressions
 
@@ -15,42 +15,41 @@ output_path = os.path.join(main_dir, 'output')
 universesPaths = [str(p) for p in Path(input_path).rglob('*.xlsx')]
 
 for universe in universesPaths:
+    print(universe)
     universe_file = Extraction(universe)
     derived_tables, alias_tables, original_tables = universe_file.get_info()
-    print(universe)
-    # Excel
 
     # Notebook
     ntb = GenerateNotebook(derived_tables, alias_tables, original_tables)
     ntb.generate_notebook()
 
-    # df con todas las tablas que tiene el universo (alias, derivadas y originales)
-    dfTableDetails = pd.read_excel(universe, sheet_name="Table Details", engine="openpyxl", header=1)
-    dfJoins = pd.read_excel(universe, sheet_name="Joins", engine="openpyxl", header=1)
+    # # df con todas las tablas que tiene el universo (alias, derivadas y originales)
+    # dfTableDetails = pd.read_excel(universe, sheet_name="Table Details", engine="openpyxl", header=1)
+    # dfJoins = pd.read_excel(universe, sheet_name="Joins", engine="openpyxl", header=1)
     
-    #filtro para que no me traiga los objetos que son filtros o no tienen select
-    # tambien filtro las funciones de agregación
-    dfObjectDetails = pd.read_excel(universe, sheet_name="Object Details", engine="openpyxl", header=1)
-    dfObjectDetailsCopy = dfObjectDetails[(dfObjectDetails['Obj Select'].notnull()) & (dfObjectDetails['Obj Where'].isnull())].copy()
-    # dfObjectDetailsCopy = filterAggregationFunctions(dfObjectDetailsCopy, "Obj Select", ['min(', 'max(', 'count distinct(', 'sum(', 'avg(', 'count('])
+    # #filtro para que no me traiga los objetos que son filtros o no tienen select
+    # # tambien filtro las funciones de agregación
+    # dfObjectDetails = pd.read_excel(universe, sheet_name="Object Details", engine="openpyxl", header=1)
+    # dfObjectDetailsCopy = dfObjectDetails[(dfObjectDetails['Obj Select'].notnull()) & (dfObjectDetails['Obj Where'].isnull())].copy()
+    # # dfObjectDetailsCopy = filterAggregationFunctions(dfObjectDetailsCopy, "Obj Select", ['min(', 'max(', 'count distinct(', 'sum(', 'avg(', 'count('])
 
-    dfFilterDetails = dfObjectDetails[(dfObjectDetails['Obj Where'].notna())].copy()
-
-
-    foreignKeys = processJoinExpressions(dfJoins)
-
-    dfDerivedTablesSql = createSqlQueryDerivedTables(dfTableDetails)
-    dfAliasTablesSql = createSqlQueryAliasTables(dfTableDetails, dfObjectDetailsCopy,foreignKeys)
-    dfOriginalTables = createSqlOriginalTables(dfTableDetails, dfObjectDetailsCopy, foreignKeys)
+    # dfFilterDetails = dfObjectDetails[(dfObjectDetails['Obj Where'].notna())].copy()
 
 
-    # se define el orden de concatenación de las tablas
-    queries = pd.concat([dfDerivedTablesSql, dfAliasTablesSql, dfOriginalTables])
-    createNotebook(queries, universe, output_path)
+    # foreignKeys = processJoinExpressions(dfJoins)
+
+    # dfDerivedTablesSql = createSqlQueryDerivedTables(dfTableDetails)
+    # dfAliasTablesSql = createSqlQueryAliasTables(dfTableDetails, dfObjectDetailsCopy,foreignKeys)
+    # dfOriginalTables = createSqlOriginalTables(dfTableDetails, dfObjectDetailsCopy, foreignKeys)
 
 
-    base_name = os.path.basename(universe)
-    file_name_without_ext = os.path.splitext(base_name)[0]
-    debug_filename = f"debug_fks_{file_name_without_ext}.csv"
-    full_output_path = os.path.join(output_path, debug_filename)
-    foreignKeys.to_csv(full_output_path, index=False)
+    # # se define el orden de concatenación de las tablas
+    # queries = pd.concat([dfDerivedTablesSql, dfAliasTablesSql, dfOriginalTables])
+    # createNotebook(queries, universe, output_path)
+
+
+    # base_name = os.path.basename(universe)
+    # file_name_without_ext = os.path.splitext(base_name)[0]
+    # debug_filename = f"debug_fks_{file_name_without_ext}.csv"
+    # full_output_path = os.path.join(output_path, debug_filename)
+    # foreignKeys.to_csv(full_output_path, index=False)

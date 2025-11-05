@@ -20,7 +20,7 @@ class GenerateNotebook:
             "nbformat_minor": 5
         }
     
-    def _create_cell(self, type: str, execution_count: None, metadata: Dict = {}, output: List = [], source: List = []):
+    def _create_cell(self, type: str, execution_count= None, metadata: Dict = {}, output: List = [], source: List = []):
         """
         Create all kind of cells within a jupyter notebook.
         """
@@ -36,7 +36,7 @@ class GenerateNotebook:
     def generate_notebook(self):
         """
         """
-        queries = pd.concat(self.derived_tables, self.alias_tables, self.original_tables)
+        queries = pd.concat([self.derived_tables, self.alias_tables, self.original_tables])
         self._notebook_content()
         self._create_cell(type= "code", source= ["%python"])
 
@@ -46,3 +46,10 @@ class GenerateNotebook:
 
             # Markdown cells per object created in Databricks
             self._create_cell(type= "markdown", source= [f"### View: {table_name}"])
+
+            # Spark ddl sql
+            spark_sql = f'spark.sql(f"""\n{sql_script}\n""")'
+            self._create_cell(type= "code", source= [spark_sql])
+
+            # INSERT INTO in universe_definitions
+

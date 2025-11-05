@@ -64,19 +64,15 @@ def filterAggregationFunctions(df, columna, funciones_agg):
 
 def createSqlQueryDerivedTables(dfTables):
     #filtro para tener las tablas que son derivadas y no son alias
-    dfCopy = dfTables[ (dfTables['Table Is Alias'] == 0) & (dfTables['Table Is Derived'] == 1)]
+    dfCopy = dfTables[(dfTables['Table Is Alias'] == 0) & (dfTables['Table Is Derived'] == 1)]
     result = []
     if dfCopy is not None and not dfCopy.empty:
-        for index, table in dfCopy.iterrows():
+        for _, table in dfCopy.iterrows():
             #limpio un poco el nombre de la tabla y del sql
             derivedSql = table['Derived SQL'].replace('_x000D_', '')
             table_name_clean = table['Table Name'].strip('"')
 
-            sql_text = f"""
-            CREATE OR REPLACE TABLE {{catalog}}.{{schema}}.{table_name_clean}\n
-            TBLPROPERTIES(delta.columnMapping.mode = 'name')\n
-            AS {derivedSql};
-            """
+            sql_text = f"""CREATE OR REPLACE TABLE {{catalog}}.{{schema}}.{table_name_clean}\nTBLPROPERTIES(delta.columnMapping.mode = 'name')\nAS {derivedSql};"""
             result.append({'Table_name': table_name_clean, 'SQL Script':sql_text })
     return pd.DataFrame(result)
 
