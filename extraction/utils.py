@@ -71,16 +71,17 @@ def createSqlQueryDerivedTables(dfTables):
             #limpio un poco el nombre de la tabla y del sql
             derivedSql = table['Derived SQL'].replace('_x000D_', '')
             table_name_clean = table['Table Name'].strip('"')
+            universe_name = table['Universe Name'].rstrip('.unx').lower()
 
             sql_text = f"""CREATE OR REPLACE TABLE {{catalog}}.{{schema}}.{table_name_clean}\nTBLPROPERTIES(delta.columnMapping.mode = 'name')\nAS {derivedSql};"""
-            result.append({'Table_name': table_name_clean, 'SQL Script':sql_text })
+            result.append({'Table_name': table_name_clean, 'SQL Script': sql_text , 'Universe Name': universe_name, 'Type': "table"})
     return pd.DataFrame(result)
 
 
 def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
     result_rows = []
     dfCopyTables = dfTables[ (dfTables['Table Is Alias'] == 1) ].copy()
-    for index, table in dfCopyTables.iterrows():
+    for _, table in dfCopyTables.iterrows():
         tableCleanName = clean_table_name( table["Table Name"] )
         originalTableClean = clean_table_name( table["Orig Table"] )
         # Construimos el patrón de búsqueda. Para poder encontrar los objetos asociados a la tabla
