@@ -82,6 +82,7 @@ class GenerateNotebook:
         """
         filtered_alias = self._generate_flags(self.alias_tables)
         filtered_original = self._generate_flags(self.original_tables)
+        print(self.original_tables['Table_name'])
 
         for filter in [filtered_alias, filtered_original]:
             create_object = set()
@@ -97,6 +98,7 @@ class GenerateNotebook:
             # Case concat using ||
             is_concat = filter[filter['is_concat'] == 1]
             concat_info = self._concat_info(is_concat)
+            
 
 
         

@@ -16,7 +16,7 @@ class Extraction():
     
     def _read_file(self):
         """
-        Read from the same excel file, the tabs: Table Details, Joins and Object Details and save each one in excel_info
+        Read from the same excel file, the tabs: Table Details, Joins and Object Details and save each one in excel_info.
         """
         for col in self.file_columns:
             df = pd.read_excel(self.excel_file, sheet_name= col, engine="openpyxl", header= 1)
@@ -24,6 +24,7 @@ class Extraction():
     
     def _build_sql(self, table_fields: List, table_name: str) -> str:
         """
+        Builds and returns an SQL expression that concatenates all fields of a given table, or references a single field if only one exists.
         """
         fields = table_fields[table_name]
         if len(fields) > 1:
@@ -36,6 +37,8 @@ class Extraction():
 
     def _join_expressions(self):
         """
+        Parses SQL join expressions to identify relationships between tables and builds a 
+        DataFrame showing each pair of related tables along with the SQL used to join them.
         """
         final_relationships = []
         for expression in self.joins["Join Expression"]:
@@ -87,6 +90,9 @@ class Extraction():
     
     def get_info(self):
         """
+        Reads data from an Excel file, processes join relationships and table definitions, 
+        and returns three DataFrames containing derived tables, alias tables, and original tables 
+        by combining the information extracted from the file's different sheets.
         """
         # Saving excel information
         self._read_file()
