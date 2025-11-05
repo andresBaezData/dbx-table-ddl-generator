@@ -72,7 +72,11 @@ def createSqlQueryDerivedTables(dfTables):
             derivedSql = table['Derived SQL'].replace('_x000D_', '')
             table_name_clean = table['Table Name'].strip('"')
 
-            sql_text = f"""CREATE OR REPLACE VIEW {{catalog}}.{{schema}}.{table_name_clean} AS {derivedSql};"""
+            sql_text = f"""
+            CREATE OR REPLACE TABLE {{catalog}}.{{schema}}.{table_name_clean}\n
+            TBLPROPERTIES(delta.columnMapping.mode = 'name')\n
+            AS {derivedSql};
+            """
             result.append({'Table_name': table_name_clean, 'SQL Script':sql_text })
     return pd.DataFrame(result)
 

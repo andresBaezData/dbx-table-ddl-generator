@@ -101,7 +101,7 @@ class Extraction():
         self.objects_details = self.excel_info['Object Details']
 
         objects_details_filtered = self.objects_details[(self.objects_details['Obj Select'].notnull()) & (self.objects_details['Obj Where'].isnull())].copy()
-        filter_details = self.objects_details[(self.objects_details['Obj Where'].notna())].copy()
+        # filter_details = self.objects_details[(self.objects_details['Obj Where'].notna())].copy()
 
         foreignKeys = self._join_expressions()
         derived_tables = createSqlQueryDerivedTables(self.table_details)
