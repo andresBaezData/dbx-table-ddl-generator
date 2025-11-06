@@ -45,8 +45,7 @@ class GenerateNotebook:
             sql_script = row['SQL Script']
             universe_name = row['Universe Name']
             object_type = row['Type']
-            print(universe_name)
-            break
+
             # Markdown cells per object created in Databricks
             self._create_cell(type= "markdown", source= [f"### View: {table_name}"])
 

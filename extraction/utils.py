@@ -74,23 +74,22 @@ def createSqlQueryDerivedTables(dfTables):
             universe_name = table['Universe Name'].rstrip('.unx').lower()
 
             sql_text = f"""CREATE OR REPLACE TABLE {{catalog}}.{{schema}}.{table_name_clean}\nTBLPROPERTIES(delta.columnMapping.mode = 'name')\nAS {derivedSql};"""
-            result.append({'Table_name': table_name_clean, 'SQL Script': sql_text , 'Universe Name': universe_name, 'Type': "table"})
+            result.append({'Table_name': table_name_clean, 'SQL Script': sql_text , 'Universe Name': universe_name, 'Type': "dt"})
     return pd.DataFrame(result)
 
 
 def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
     result_rows = []
-    dfCopyTables = dfTables[ (dfTables['Table Is Alias'] == 1) ].copy()
+    dfCopyTables = dfTables[(dfTables['Table Is Alias'] == 1)].copy()
     for _, table in dfCopyTables.iterrows():
         tableCleanName = clean_table_name( table["Table Name"] )
-        originalTableClean = clean_table_name( table["Orig Table"] )
+        originalTableClean = clean_table_name( table["Orig Table"])
+        universe_name = table['Universe Name'].rstrip('.unx').lower()
         # Construimos el patrón de búsqueda. Para poder encontrar los objetos asociados a la tabla
         # esto se hace porque hay objetos que tienen multiples tablas asociadas. Entonces cuando pasa eso, inyectamos el sql en las dos tablas
         # si no hacemos este regex y buscamos simplemente un substring con el nombre de la tabla pasa que se duplican campos, porque tenes tablas con nombres muy parecidos 
         patron = r'\b' + re.escape(tableCleanName) + r'\b'
-        dfCopyObjectDetails = dfObjectDetails[
-            dfObjectDetails["Obj Tables"].str.contains(patron, flags=re.IGNORECASE, regex=True, na=False)
-        ].copy()
+        dfCopyObjectDetails = dfObjectDetails[dfObjectDetails["Obj Tables"].str.contains(patron, flags=re.IGNORECASE, regex=True, na=False)].copy()
 
         dfFKsCopy = dfFKs[( dfFKs["originTable"] ==  tableCleanName.upper())].copy()
         #si la tabla tiene objetos asociados los recorremos
@@ -116,16 +115,17 @@ def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
             #borro el nombre del esquema y catalogo, solo me quedo con el nombre de la tabla
             cleanedTableName = clean_table_name(table["Table Name"])
             sql_script = f"""CREATE OR REPLACE VIEW {{out_catalog}}.{{out_schema}}.{"vw_" + cleanedTableName} AS SELECT {selectClause} \n FROM {{in_catalog}}.{{in_schema}}.{originalTableClean};"""
-            result_rows.append({'Table_name': f"vw_{cleanedTableName}", 'SQL Script': sql_script})
+            result_rows.append({'Table_name': f"vw_{cleanedTableName}", 'SQL Script': sql_script, 'Universe Name': universe_name, 'Type': 'view_report'})
 
 
     return pd.DataFrame(result_rows)
 
 def createSqlOriginalTables(dfTables, dfObjectDetails, dfFKs):
     result_rows = []
-    dfCopyTables = dfTables[ (dfTables['Table Is Alias'] == 0) & (dfTables['Table Is Derived'] == 0)].copy()
-    for index, table in dfCopyTables.iterrows():
+    dfCopyTables = dfTables[(dfTables['Table Is Alias'] == 0) & (dfTables['Table Is Derived'] == 0)].copy()
+    for _, table in dfCopyTables.iterrows():
         tableCleanName = clean_table_name( table["Table Name"] )
+        universe_name = table['Universe Name'].rstrip('.unx').lower()
 
         # Construimos el patrón de búsqueda. Para poder encontrar los objetos asociados a la tabla
         # esto se hace porque hay objetos que tienen multiples tablas asociadas. Entonces cuando pasa eso, inyectamos el sql en las dos tablas
@@ -158,7 +158,7 @@ def createSqlOriginalTables(dfTables, dfObjectDetails, dfFKs):
             #borro el nombre del esquema y catalogo, solo me quedo con el nombre de la tabla
             cleanedTableName = clean_table_name(table["Table Name"])
             sql_script = f"""CREATE OR REPLACE VIEW {{out_catalog}}.{{out_schema}}.{"vw_" + cleanedTableName} AS SELECT {selectClause} \n FROM {{in_catalog}}.{{in_schema}}.{cleanedTableName};"""
-            result_rows.append({'Table_name': f"vw_{cleanedTableName}", 'SQL Script': sql_script})
+            result_rows.append({'Table_name': f"vw_{cleanedTableName}", 'SQL Script': sql_script, 'Universe Name': universe_name, 'Type': 'view_report'})
     return pd.DataFrame(result_rows)
 
 
