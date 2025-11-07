@@ -1,13 +1,13 @@
 import pandas as pd
-import re
-from .utils import drop_comments, get_from
+import json
 from typing import Dict, List
 
 class GenerateNotebook:
-    def __init__(self, derived_tables, alias_tables, original_tables):
+    def __init__(self, derived_tables, alias_tables, original_tables, path):
         self.derived_tables = derived_tables
         self.alias_tables = alias_tables
         self.original_tables = original_tables
+        self.ntb_path = path
 
     def _notebook_content(self):
         """
@@ -59,6 +59,7 @@ class GenerateNotebook:
 
     def _insert_cell(self, object_name: str, universe_name: str, type: str):
         """
+        Create an INSERT INTO for each object in the databricks notebook.
         """
         source = [
             f'ddl = spark.sql(f"SHOW CREATE TABLE {{out_catalog}}.{{out_schema}}.{object_name}").first()[0]\n',
@@ -69,6 +70,7 @@ class GenerateNotebook:
             ')\n',
             'spark.createDataFrane([row], schema= schema).write.mode("append").insertInto(f"{{out_catalog}}.{{out_schema}}.universe_definitions")'
         ]
+        self._create_cell(type= "code", source= source)
 
     def generate_notebook(self):
         """
@@ -101,4 +103,7 @@ class GenerateNotebook:
             self._create_cell(type= "code", source= [spark_sql])
 
             # INSERT INTO or UPDATE / MERGE in universe_definitions
+            # self._insert_cell(table_name, universe_name, object_type)
 
+        with open(self.ntb_path, 'w', encoding='utf-8') as f:
+            json.dump(self.notebook, f, indent=2)

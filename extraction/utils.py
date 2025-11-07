@@ -52,6 +52,22 @@ def clean_table_name(full_name_str):
     # Devuelve la última parte, que es el nombre de la tabla
     return parts[-1]
 
+def clean_origin_table(table_name: str):
+    """
+    Extract information about catalog, schema and table name from sources of alias and original views.
+    The function returns information about schema and table only.
+    """
+    parts = table_name.strip('"').strip().split('.')
+    if len(parts) == 3:
+        _, schema, table = parts
+    elif len(parts) == 2:
+        schema, table = parts
+    else:
+        schema = None
+        table = parts[0]
+
+    return schema, table
+
 def filterAggregationFunctions(df, columna, funciones_agg):
     #retorna un dataframe excluyendo las filas que contengan alguna de las funciones pasados por parametro
     expr_lower = df[columna].str.lower()
@@ -81,10 +97,13 @@ def createSqlQueryDerivedTables(dfTables):
 def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
     result_rows = []
     dfCopyTables = dfTables[(dfTables['Table Is Alias'] == 1)].copy()
+
     for _, table in dfCopyTables.iterrows():
         tableCleanName = clean_table_name( table["Table Name"] )
         originalTableClean = clean_table_name( table["Orig Table"])
         universe_name = table['Universe Name'].rstrip('.unx').lower()
+        schema, source_table = clean_origin_table(table["Orig Table"])
+
         # Construimos el patrón de búsqueda. Para poder encontrar los objetos asociados a la tabla
         # esto se hace porque hay objetos que tienen multiples tablas asociadas. Entonces cuando pasa eso, inyectamos el sql en las dos tablas
         # si no hacemos este regex y buscamos simplemente un substring con el nombre de la tabla pasa que se duplican campos, porque tenes tablas con nombres muy parecidos 
@@ -113,8 +132,9 @@ def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
             selectClause = "\n" + ",\n".join(selectColumns)
 
             #borro el nombre del esquema y catalogo, solo me quedo con el nombre de la tabla
+            originalTableClean = f'{schema}.{source_table}' if schema != None else table
             cleanedTableName = clean_table_name(table["Table Name"])
-            sql_script = f"""CREATE OR REPLACE VIEW {{out_catalog}}.{{out_schema}}.{"vw_" + cleanedTableName} AS SELECT {selectClause} \n FROM {{in_catalog}}.{{in_schema}}.{originalTableClean};"""
+            sql_script = f"""CREATE OR REPLACE VIEW {{out_catalog}}.{{out_schema}}.{"vw_" + cleanedTableName} AS SELECT {selectClause} \n FROM {{in_catalog}}.{originalTableClean};"""
             result_rows.append({'Table_name': f"vw_{cleanedTableName}", 'SQL Script': sql_script, 'Universe Name': universe_name, 'Type': 'view_report'})
 
 
