@@ -14,6 +14,7 @@ os.makedirs(output_path, exist_ok=True)
 universesPaths = [str(p) for p in Path(input_path).rglob('*.xlsx')]
 
 for universe in universesPaths:
+    print(universe)
     # Output file name and Output path
     output_file = os.path.splitext(os.path.basename(universe))[0]
     output_file = f'{output_file}.ipynb'

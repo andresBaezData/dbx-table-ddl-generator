@@ -66,6 +66,10 @@ def clean_origin_table(table_name: str):
         schema = None
         table = parts[0]
 
+    table = table.lower()
+    if schema != None:
+        schema = schema.lower()
+
     return schema, table
 
 def filterAggregationFunctions(df, columna, funciones_agg):
@@ -177,7 +181,9 @@ def createSqlOriginalTables(dfTables, dfObjectDetails, dfFKs):
 
             #borro el nombre del esquema y catalogo, solo me quedo con el nombre de la tabla
             cleanedTableName = clean_table_name(table["Table Name"])
-            sql_script = f"""CREATE OR REPLACE VIEW {{out_catalog}}.{{out_schema}}.{"vw_" + cleanedTableName} AS SELECT {selectClause} \n FROM {{in_catalog}}.{{in_schema}}.{cleanedTableName};"""
+            schema, source_table = clean_origin_table(table["Table Name"])
+            originalTableClean = f'{schema}.{source_table}' if schema != None else table
+            sql_script = f"""CREATE OR REPLACE VIEW {{out_catalog}}.{{out_schema}}.{"vw_" + cleanedTableName} AS SELECT {selectClause} \n FROM {{in_catalog}}.{originalTableClean};"""
             result_rows.append({'Table_name': f"vw_{cleanedTableName}", 'SQL Script': sql_script, 'Universe Name': universe_name, 'Type': 'view_report'})
     return pd.DataFrame(result_rows)
 
