@@ -2,30 +2,37 @@ import re
 import pandas as pd
 from collections import defaultdict
 
-#funcion que se encarga de llamar todas las funciones que limpian el select de cada objeto
-def cleanObjectSelect(string, dfObjectDetails):
-    stringCleaned = string.lower()
+def cleanObjectSelect(field: str):
+    """
+    Cleans and standardizes SQL field expressions by removing catalog and schema prefixes,
+    simplifying table references, and commenting out aggregation functions.
+    """
+    # Removes any "@catalog(...)" references
+    stringCleaned = field.lower()
     stringCleaned = re.sub(r'@catalog\((.*?)\)', r'\1', stringCleaned, flags=re.IGNORECASE)
 
-
-    # Eliminamos el esquema y el catalogo. "Catalogo"."Esquema"."Tabla"."Columna" pasa a "Tabla"."Columna".
+    # Removes catalog and schema names when they are written with double quotes,
+    # keeping only the table and column (e.g., "catalog"."schema"."table"."column" → "table"."column")
     stringCleaned = re.sub(
-    r"(?:'[^']+'\.)?(?:\"[^\"]+\"\.){2}\"[^\"]+\"",
-    lambda match: (lambda grupos: f'"{grupos[-2]}"."{grupos[-1]}"' if len(grupos) >= 2 else match.group())(
-        re.findall(r'"([^"]+)"', match.group())
-    ),
-    stringCleaned)
+        r"(?:'[^']+'\.)?(?:\"[^\"]+\"\.){2}\"[^\"]+\"",
+        lambda match: (lambda grupos: f'"{grupos[-2]}"."{grupos[-1]}"' if len(grupos) >= 2 else match.group())(re.findall(r'"([^"]+)"', match.group())),
+        stringCleaned
+    )
 
-    # hace lo mismo que el codigo de arriba pero permite borrar cuando no se usan comillas dobles. Catalogo.Esquema.Tabla.Columna pasa a Tabla.Columna.
+    # Does the same as above but for unquoted names, turning "catalog.schema.table.column" into "table.column"
     stringCleaned = re.sub(
         r'\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z0-9_\.]+)',
         lambda m: m.group(2),
         stringCleaned
     )
 
-    stringCleaned = commentAggregationFunctions(stringCleaned, ['min(', 'max(', 'count distinct(', 'sum(', 'avg(', 'count(', '@select('])
-    
+    stringCleaned = re.sub(
+        r'(?:\"[^\"]+\"\.){1,2}\"([^\"]+)\"|(?:\w+\.){1,2}(\w+)',
+        lambda m: (m.group(1) or m.group(2)),
+        stringCleaned
+    )
 
+    stringCleaned = commentAggregationFunctions(stringCleaned, ['min(', 'max(', 'count distinct(', 'sum(', 'avg(', 'count(', '@select('])
 
     return stringCleaned
 
@@ -88,7 +95,6 @@ def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
     """
     Creates the DDL SQL for each alias view in Databricks.
     """
-    print(dfFKs[dfFKs['originTable'] == 'A_ADDRESS_LINK'])
     result_rows = []
     alias_views = dfTables[(dfTables['Table Is Alias'] == 1)]
 
@@ -102,7 +108,7 @@ def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
         
         # Find all the fields related with each alias view
         pattern = r'\b' + re.escape(alias_view) + r'\b'
-        alias_fields = dfObjectDetails[dfObjectDetails["Obj Tables"].str.contains(pattern, flags=re.IGNORECASE, regex=True, na=False)]
+        alias_fields = dfObjectDetails[dfObjectDetails["Obj Tables"].str.contains(pattern, flags=re.IGNORECASE, regex=True, na=False)].copy()
 
         # Find all the joins related with each alias view
         alias_joins = dfFKs[(dfFKs["originTable"] ==  alias_view.upper())]
@@ -110,8 +116,8 @@ def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
         if not alias_fields.empty:
             selectColumns = []
             for _, row in alias_fields.iterrows():
-                select = row['Obj Select'].split(".")[-1].strip('"').lower() # select.replace(view["Table Name"], view["Orig Table"])
-                select = cleanObjectSelect(select, dfObjectDetails)
+                select = row['Obj Select'].replace(view["Table Name"], view["Orig Table"])
+                select = cleanObjectSelect(select)
                 alias = row['Obj Name']
                 selectColumns.append(f"    {select} AS `{alias}`")
             
@@ -152,8 +158,8 @@ def createSqlOriginalTables(dfTables, dfObjectDetails, dfFKs):
         if not original_fields.empty:
             selectColumns = []
             for _, row in original_fields.iterrows():
-                select = row['Obj Select'].split(".")[-1].strip('"').lower() 
-                select = cleanObjectSelect(select, dfObjectDetails)
+                select = row['Obj Select']
+                select = cleanObjectSelect(select)
                 alias = row['Obj Name']
                 selectColumns.append(f"    {select} AS '{alias}'")
             
