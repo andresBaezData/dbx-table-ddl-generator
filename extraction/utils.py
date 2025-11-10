@@ -1,6 +1,5 @@
 import re
 import pandas as pd
-from collections import defaultdict
 
 def cleanObjectSelect(field: str):
     """
@@ -26,17 +25,22 @@ def cleanObjectSelect(field: str):
         stringCleaned
     )
 
+    # Removes catalog and schema prefixes (with or without quotes) so only the table or column name remains.
     stringCleaned = re.sub(
         r'(?:\"[^\"]+\"\.){1,2}\"([^\"]+)\"|(?:\w+\.){1,2}(\w+)',
         lambda m: (m.group(1) or m.group(2)),
         stringCleaned
     )
 
+    # Comment some agg functions.
     stringCleaned = commentAggregationFunctions(stringCleaned, ['min(', 'max(', 'count distinct(', 'sum(', 'avg(', 'count(', '@select('])
 
     return stringCleaned
 
 def commentAggregationFunctions(text: str, functionsArr: list):
+    """
+    The function comments out any SQL expression that contains aggregation functions, preventing it from being executed.
+    """
     textCopy = str(text)
     containsAggr = any(func.lower() in textCopy for func in functionsArr)
     if containsAggr:
@@ -59,29 +63,16 @@ def clean_table_name(table_name: str):
         schema = None
         table = parts[0]
 
-    # table = table.lower()
-    # if schema != None:
-    #     schema = schema.lower()
-
     return schema, table
 
-def filterAggregationFunctions(df, columna, funciones_agg):
-    #retorna un dataframe excluyendo las filas que contengan alguna de las funciones pasados por parametro
-    expr_lower = df[columna].str.lower()
-    # Crear patrón regex para funciones de agregación
-    funciones_agg_escapadas = [re.escape(func.lower()) for func in funciones_agg]
-    patron = '|'.join(funciones_agg_escapadas)
-    contiene_agg = expr_lower.str.contains(patron, na=False)
-    return df.loc[~contiene_agg]
-
-
 def createSqlQueryDerivedTables(dfTables):
-    #filtro para tener las tablas que son derivadas y no son alias
+    """
+    The function builds DDL SQL statements for all derived tables in the input DataFrame and returns them in a structured format.
+    """
     dfCopy = dfTables[(dfTables['Table Is Alias'] == 0) & (dfTables['Table Is Derived'] == 1)]
     result = []
     if dfCopy is not None and not dfCopy.empty:
         for _, table in dfCopy.iterrows():
-            #limpio un poco el nombre de la tabla y del sql
             derivedSql = table['Derived SQL'].replace('_x000D_', '')
             table_name_clean = table['Table Name'].strip('"')
             universe_name = table['Universe Name'].rstrip('.unx').lower()
@@ -89,7 +80,6 @@ def createSqlQueryDerivedTables(dfTables):
             sql_text = f"""CREATE OR REPLACE TABLE {{catalog}}.{{schema}}.{table_name_clean}\nTBLPROPERTIES(delta.columnMapping.mode = 'name')\nAS {derivedSql};"""
             result.append({'Table_name': table_name_clean, 'SQL Script': sql_text , 'Universe Name': universe_name, 'Type': "dt"})
     return pd.DataFrame(result)
-
 
 def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
     """
@@ -161,13 +151,12 @@ def createSqlOriginalTables(dfTables, dfObjectDetails, dfFKs):
                 select = row['Obj Select']
                 select = cleanObjectSelect(select)
                 alias = row['Obj Name']
-                selectColumns.append(f"    {select} AS '{alias}'")
+                selectColumns.append(f"    {select} AS `{alias}`")
             
-            #recorremos los joins
             for _, fk in original_joins.iterrows():
                 select = fk['sql'].split(".")[-1].strip('"').lower()
                 alias = 'id_' + fk['endTable'].lower()
-                selectColumns.append(f"    {select} AS '{alias}'")
+                selectColumns.append(f"    {select} AS `{alias}`")
             
             selectClause = "\n" + ",\n".join(selectColumns)
 
