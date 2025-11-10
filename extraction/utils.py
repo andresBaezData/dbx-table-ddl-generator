@@ -38,21 +38,7 @@ def commentAggregationFunctions(text: str, functionsArr: list):
     
     return textCopy
 
-
-def clean_table_name(full_name_str):
-    # Limpia un nombre de tabla completamente calificado, quitando esquemas y comillas.
-    # - '"ESQUEMA"."TABLA"' -> 'TABLA'
-    # - 'ESQUEMA.TABLA'     -> 'TABLA'
-    # - '"TABLA"'           -> 'TABLA'
-
-    if not isinstance(full_name_str, str):
-        return ""
-    # Separa por el punto y limpia las comillas de cada parte
-    parts = [part.strip().strip('"') for part in full_name_str.split('.')]
-    # Devuelve la última parte, que es el nombre de la tabla
-    return parts[-1]
-
-def clean_origin_table(table_name: str):
+def clean_table_name(table_name: str):
     """
     Extract information about catalog, schema and table name from sources of alias and original views.
     The function returns information about schema and table only.
@@ -66,9 +52,9 @@ def clean_origin_table(table_name: str):
         schema = None
         table = parts[0]
 
-    table = table.lower()
-    if schema != None:
-        schema = schema.lower()
+    # table = table.lower()
+    # if schema != None:
+    #     schema = schema.lower()
 
     return schema, table
 
@@ -99,92 +85,91 @@ def createSqlQueryDerivedTables(dfTables):
 
 
 def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
+    """
+    Creates the DDL SQL for each alias view in Databricks.
+    """
+    print(dfFKs[dfFKs['originTable'] == 'A_ADDRESS_LINK'])
     result_rows = []
-    dfCopyTables = dfTables[(dfTables['Table Is Alias'] == 1)].copy()
+    alias_views = dfTables[(dfTables['Table Is Alias'] == 1)]
 
-    for _, table in dfCopyTables.iterrows():
-        tableCleanName = clean_table_name( table["Table Name"] )
-        originalTableClean = clean_table_name( table["Orig Table"])
-        universe_name = table['Universe Name'].rstrip('.unx').lower()
-        schema, source_table = clean_origin_table(table["Orig Table"])
+    for _, view in alias_views.iterrows():
+        # Extract schema and table name information of the source and the alias view
+        source_schema, source_table = clean_table_name(view["Orig Table"])
+        _, alias_view = clean_table_name(view["Table Name"])
 
-        # Construimos el patrón de búsqueda. Para poder encontrar los objetos asociados a la tabla
-        # esto se hace porque hay objetos que tienen multiples tablas asociadas. Entonces cuando pasa eso, inyectamos el sql en las dos tablas
-        # si no hacemos este regex y buscamos simplemente un substring con el nombre de la tabla pasa que se duplican campos, porque tenes tablas con nombres muy parecidos 
-        patron = r'\b' + re.escape(tableCleanName) + r'\b'
-        dfCopyObjectDetails = dfObjectDetails[dfObjectDetails["Obj Tables"].str.contains(patron, flags=re.IGNORECASE, regex=True, na=False)].copy()
+        # Extract the universe name of each alias view
+        universe_name = view['Universe Name'].rstrip('.unx').lower()
+        
+        # Find all the fields related with each alias view
+        pattern = r'\b' + re.escape(alias_view) + r'\b'
+        alias_fields = dfObjectDetails[dfObjectDetails["Obj Tables"].str.contains(pattern, flags=re.IGNORECASE, regex=True, na=False)]
 
-        dfFKsCopy = dfFKs[( dfFKs["originTable"] ==  tableCleanName.upper())].copy()
-        #si la tabla tiene objetos asociados los recorremos
-        if dfCopyObjectDetails.empty == False:
+        # Find all the joins related with each alias view
+        alias_joins = dfFKs[(dfFKs["originTable"] ==  alias_view.upper())]
+
+        if not alias_fields.empty:
             selectColumns = []
-            for _, objectDetail in dfCopyObjectDetails.iterrows():
-                select = objectDetail['Obj Select']
-                #reemplazo el nombre de la tabla alias con el de la tabla original
-                select = select.replace(table["Table Name"], table["Orig Table"])
-                select = cleanObjectSelect( select, dfObjectDetails )
-                alias = objectDetail['Obj Name']
+            for _, row in alias_fields.iterrows():
+                select = row['Obj Select'].split(".")[-1].strip('"').lower() # select.replace(view["Table Name"], view["Orig Table"])
+                select = cleanObjectSelect(select, dfObjectDetails)
+                alias = row['Obj Name']
                 selectColumns.append(f"    {select} AS `{alias}`")
             
-            #recorremos los joins
-            for _, fk in dfFKsCopy.iterrows():
-                # la fk me viene con el nombre de la tabla alias, pero tengo que reemplazarlo con la tabla original
-                select = fk['sql'].replace(tableCleanName, originalTableClean)
-                alias = 'id_' + fk['endTable']
+            for _, fk in alias_joins.iterrows():
+                select = fk['sql'].split(".")[-1].strip('"').lower() # fk['sql'].replace(alias_view, source_table)
+                alias = 'id_' + fk['endTable'].lower()
                 selectColumns.append(f"    {select} AS `{alias}`")
             
             selectClause = "\n" + ",\n".join(selectColumns)
 
-            #borro el nombre del esquema y catalogo, solo me quedo con el nombre de la tabla
-            originalTableClean = f'{schema}.{source_table}' if schema != None else table
-            cleanedTableName = clean_table_name(table["Table Name"])
-            sql_script = f"""CREATE OR REPLACE VIEW {{out_catalog}}.{{out_schema}}.{"vw_" + cleanedTableName} AS SELECT {selectClause} \n FROM {{in_catalog}}.{originalTableClean};"""
-            result_rows.append({'Table_name': f"vw_{cleanedTableName}", 'SQL Script': sql_script, 'Universe Name': universe_name, 'Type': 'view_report'})
-
+            from_table = f'{source_schema}.{source_table}' if source_schema != None else source_table
+            sql_script = f"""CREATE OR REPLACE VIEW {{out_catalog}}.{{out_schema}}.{"vw_" + alias_view.lower()} AS SELECT {selectClause} \n FROM {{in_catalog}}.{from_table.lower()};"""
+            result_rows.append({'Table_name': f"vw_{alias_view}", 'SQL Script': sql_script, 'Universe Name': universe_name, 'Type': 'view_report'})
 
     return pd.DataFrame(result_rows)
 
 def createSqlOriginalTables(dfTables, dfObjectDetails, dfFKs):
+    """
+    Creates the DDL SQL for each original view in Databricks.
+    """
+
     result_rows = []
-    dfCopyTables = dfTables[(dfTables['Table Is Alias'] == 0) & (dfTables['Table Is Derived'] == 0)].copy()
-    for _, table in dfCopyTables.iterrows():
-        tableCleanName = clean_table_name( table["Table Name"] )
+    original_views = dfTables[(dfTables['Table Is Alias'] == 0) & (dfTables['Table Is Derived'] == 0)]
+    for _, table in original_views.iterrows():
+        # Extract schema and table name information of the original view
+        original_schema, original_view = clean_table_name(table["Table Name"])
+        
+        # Extract the universe name of each original view
         universe_name = table['Universe Name'].rstrip('.unx').lower()
 
-        # Construimos el patrón de búsqueda. Para poder encontrar los objetos asociados a la tabla
-        # esto se hace porque hay objetos que tienen multiples tablas asociadas. Entonces cuando pasa eso, inyectamos el sql en las dos tablas
-        # si no hacemos este regex y buscamos simplemente un substring con el nombre de la tabla pasa que se duplican campos, porque tenes tablas con nombres muy parecidos 
-        patron = r'\b' + re.escape( table["Table Name"] ) + r'\b'
-        dfCopyObjectDetails = dfObjectDetails[
-            dfObjectDetails["Obj Tables"].str.contains(patron, flags=re.IGNORECASE, regex=True, na=False)
-        ].copy()
+        # Find all the fields related with each original view 
+        pattern = r'\b' + re.escape( table["Table Name"] ) + r'\b'
+        original_fields = dfObjectDetails[dfObjectDetails["Obj Tables"].str.contains(pattern, flags=re.IGNORECASE, regex=True, na=False)]
 
-        #hago un upper porque en en el dfks viene todo en mayuscula
-        dfFKsCopy = dfFKs[( dfFKs["originTable"] ==  tableCleanName.upper())].copy()
+        # Find all the joins related with each alias view
+        original_joins = dfFKs[( dfFKs["originTable"] ==  original_view.upper())].copy()
 
-        #si la tabla tiene objetos asociados los recorremos
-        if dfCopyObjectDetails.empty == False:
+        if not original_fields.empty:
             selectColumns = []
-            for _, objectDetail in dfCopyObjectDetails.iterrows():
-                select = cleanObjectSelect( objectDetail['Obj Select'], dfObjectDetails )
-                alias = objectDetail['Obj Name']
+            for _, row in original_fields.iterrows():
+                select = row['Obj Select'].split(".")[-1].strip('"').lower() 
+                select = cleanObjectSelect(select, dfObjectDetails)
+                alias = row['Obj Name']
                 selectColumns.append(f"    {select} AS '{alias}'")
             
             #recorremos los joins
-            for _, fk in dfFKsCopy.iterrows():
-                select = fk['sql']
-                alias = 'id_' + fk['endTable']
+            for _, fk in original_joins.iterrows():
+                select = fk['sql'].split(".")[-1].strip('"').lower()
+                alias = 'id_' + fk['endTable'].lower()
                 selectColumns.append(f"    {select} AS '{alias}'")
             
             selectClause = "\n" + ",\n".join(selectColumns)
 
 
             #borro el nombre del esquema y catalogo, solo me quedo con el nombre de la tabla
-            cleanedTableName = clean_table_name(table["Table Name"])
-            schema, source_table = clean_origin_table(table["Table Name"])
-            originalTableClean = f'{schema}.{source_table}' if schema != None else table
-            sql_script = f"""CREATE OR REPLACE VIEW {{out_catalog}}.{{out_schema}}.{"vw_" + cleanedTableName} AS SELECT {selectClause} \n FROM {{in_catalog}}.{originalTableClean};"""
-            result_rows.append({'Table_name': f"vw_{cleanedTableName}", 'SQL Script': sql_script, 'Universe Name': universe_name, 'Type': 'view_report'})
+            originalTableClean = f'{original_schema}.{original_view}' if original_schema != None else original_view
+            sql_script = f"""CREATE OR REPLACE VIEW {{out_catalog}}.{{out_schema}}.{"vw_" + original_view.lower()} AS SELECT {selectClause} \n FROM {{in_catalog}}.{originalTableClean.lower()};"""
+            result_rows.append({'Table_name': f"vw_{original_view}", 'SQL Script': sql_script, 'Universe Name': universe_name, 'Type': 'view_report'})
     return pd.DataFrame(result_rows)
 
 
