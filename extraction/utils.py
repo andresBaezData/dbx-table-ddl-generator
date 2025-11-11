@@ -27,8 +27,10 @@ def cleanObjectSelect(field: str):
 
     # Removes catalog and schema prefixes (with or without quotes) so only the table or column name remains.
     stringCleaned = re.sub(
-        r'(?:\"[^\"]+\"\.){1,2}\"([^\"]+)\"|(?:\w+\.){1,2}(\w+)',
-        lambda m: (m.group(1) or m.group(2)),
+        r'(?:\"[^\"]+\"\.){1,2}\"([^\"]+)\"'        # covers "catalog"."schema"."table"
+        r'|(?:\w+\.){1,2}(\w+)'                     # covers catalog.schema.table
+        r'|\b\w+\.\"([A-Za-z_][A-Za-z0-9_]*)\"',    # covers mixed case schema."table"
+        lambda m: (m.group(1) or m.group(2) or m.group(3)),
         stringCleaned
     )
 
@@ -74,11 +76,11 @@ def createSqlQueryDerivedTables(dfTables):
     if dfCopy is not None and not dfCopy.empty:
         for _, table in dfCopy.iterrows():
             derivedSql = table['Derived SQL'].replace('_x000D_', '')
-            table_name_clean = table['Table Name'].strip('"')
+            table_name_clean = table['Table Name'].strip('"').lower()
             universe_name = table['Universe Name'].rstrip('.unx').lower()
 
             sql_text = f"""CREATE OR REPLACE TABLE {{catalog}}.{{schema}}.{table_name_clean}\nTBLPROPERTIES(delta.columnMapping.mode = 'name')\nAS {derivedSql};"""
-            result.append({'Table_name': table_name_clean, 'SQL Script': sql_text , 'Universe Name': universe_name, 'Type': "dt"})
+            result.append({'table_name': table_name_clean, 'sql_script': sql_text , 'universe_name': universe_name, 'type': "dt"})
     return pd.DataFrame(result)
 
 def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
@@ -118,9 +120,11 @@ def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
             
             selectClause = "\n" + ",\n".join(selectColumns)
 
+            alias_view = alias_view.lower()
             from_table = f'{source_schema}.{source_table}' if source_schema != None else source_table
-            sql_script = f"""CREATE OR REPLACE VIEW {{out_catalog}}.{{out_schema}}.{"vw_" + alias_view.lower()} AS SELECT {selectClause} \n FROM {{in_catalog}}.{from_table.lower()};"""
-            result_rows.append({'Table_name': f"vw_{alias_view}", 'SQL Script': sql_script, 'Universe Name': universe_name, 'Type': 'view_report'})
+            from_table = from_table.lower()
+            sql_script = f"""CREATE OR REPLACE VIEW {{out_catalog}}.{{out_schema}}.{"vw_" + alias_view} AS SELECT {selectClause} \n FROM {{in_catalog}}.{from_table};"""
+            result_rows.append({'table_name': f"vw_{alias_view}", 'sql_script': sql_script, 'universe_name': universe_name, 'type': 'view_report'})
 
     return pd.DataFrame(result_rows)
 
@@ -160,11 +164,11 @@ def createSqlOriginalTables(dfTables, dfObjectDetails, dfFKs):
             
             selectClause = "\n" + ",\n".join(selectColumns)
 
-
-            #borro el nombre del esquema y catalogo, solo me quedo con el nombre de la tabla
+            original_view = original_view.lower()
             originalTableClean = f'{original_schema}.{original_view}' if original_schema != None else original_view
-            sql_script = f"""CREATE OR REPLACE VIEW {{out_catalog}}.{{out_schema}}.{"vw_" + original_view.lower()} AS SELECT {selectClause} \n FROM {{in_catalog}}.{originalTableClean.lower()};"""
-            result_rows.append({'Table_name': f"vw_{original_view}", 'SQL Script': sql_script, 'Universe Name': universe_name, 'Type': 'view_report'})
+            originalTableClean = originalTableClean.lower()
+            sql_script = f"""CREATE OR REPLACE VIEW {{out_catalog}}.{{out_schema}}.{"vw_" + original_view} AS SELECT {selectClause} \n FROM {{in_catalog}}.{originalTableClean};"""
+            result_rows.append({'table_name': f"vw_{original_view}", 'sql_script': sql_script, 'universe_name': universe_name, 'type': 'view_report'})
     return pd.DataFrame(result_rows)
 
 

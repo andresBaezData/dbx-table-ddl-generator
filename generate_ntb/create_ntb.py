@@ -79,7 +79,8 @@ class GenerateNotebook:
         
         # Add to the source of each script a tb_ in the table_name 
         pattern = r"(FROM\s+\{.*?\}\.\w+\.)(\w+)"
-        queries['SQL Script'] = queries['SQL Script'].str.replace(pattern, r"\1tb_\2", regex=True)
+        queries['sql_script'] = queries['sql_script'].str.replace(pattern, r"\1tb_\2", regex=True)
+        queries['schema'] = queries['universe_name'].str.replace(" ", "_")
 
         # Notebook content
         self._notebook_content()
@@ -90,10 +91,10 @@ class GenerateNotebook:
         self._import_libraries()
         
         for _, row in queries.iterrows():
-            table_name = row['Table_name'].lower()
-            sql_script = row['SQL Script']
-            universe_name = row['Universe Name']
-            object_type = row['Type']
+            table_name = row['table_name'].lower()
+            sql_script = row['sql_script']
+            universe_name = row['universe_name']
+            object_type = row['type']
 
             # Markdown cells per object created in Databricks
             self._create_cell(type= "markdown", source= [f"### View: {table_name}"])
@@ -102,7 +103,7 @@ class GenerateNotebook:
             spark_sql = f'spark.sql(f"""\n{sql_script}\n""")'
             self._create_cell(type= "code", source= [spark_sql])
 
-            # INSERT INTO or UPDATE / MERGE in universe_definitions
+            # INSERT INTO or UPDATE in universe_definitions
             # self._insert_cell(table_name, universe_name, object_type)
 
         with open(self.ntb_path, 'w', encoding='utf-8') as f:
