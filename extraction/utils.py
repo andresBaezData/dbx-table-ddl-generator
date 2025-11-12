@@ -1,12 +1,13 @@
 import re
 import pandas as pd
 
-def cleanObjectSelect(field: str):
+def cleanObjectSelect(field: str, source_table: str):
     """
     Cleans and standardizes SQL field expressions by removing catalog and schema prefixes,
     simplifying table references, and commenting out aggregation functions.
     """
     # Removes any "@catalog(...)" references
+    source_table = source_table.lower()
     stringCleaned = field.lower()
     stringCleaned = re.sub(r'@catalog\((.*?)\)', r'\1', stringCleaned, flags=re.IGNORECASE)
 
@@ -17,7 +18,7 @@ def cleanObjectSelect(field: str):
         lambda match: (lambda grupos: f'"{grupos[-2]}"."{grupos[-1]}"' if len(grupos) >= 2 else match.group())(re.findall(r'"([^"]+)"', match.group())),
         stringCleaned
     )
-
+    
     # Does the same as above but for unquoted names, turning "catalog.schema.table.column" into "table.column"
     stringCleaned = re.sub(
         r'\b([A-Za-z_][A-Za-z0-9_]*)\.([A-Za-z_][A-Za-z0-9_]*\.[A-Za-z0-9_\.]+)',
@@ -27,12 +28,15 @@ def cleanObjectSelect(field: str):
 
     # Removes catalog and schema prefixes (with or without quotes) so only the table or column name remains.
     stringCleaned = re.sub(
-        r'(?:\"[^\"]+\"\.){1,2}\"([^\"]+)\"'        # covers "catalog"."schema"."table"
-        r'|(?:\w+\.){1,2}(\w+)'                     # covers catalog.schema.table
-        r'|\b\w+\.\"([A-Za-z_][A-Za-z0-9_]*)\"',    # covers mixed case schema."table"
-        lambda m: (m.group(1) or m.group(2) or m.group(3)),
+        r'(?:\"[^\"]+\"\.)?(?:\"([^\"]+)\"\.)\"([^\"]+)\"'  # "catalog"."schema"."table" o "schema"."table"
+        r'|(?:\w+\.)?(\w+)\.(\w+)'                          # catalog.schema.table o schema.table
+        ,
+        lambda m: (m.group(1) or m.group(3)) + '.' + (m.group(2) or m.group(4)),
         stringCleaned
     )
+
+    # Replace source_table with tb_source_table
+    stringCleaned = re.sub(rf'\b{re.escape(source_table)}\b', f'tb_{source_table}', stringCleaned)
 
     # Comment some agg functions.
     stringCleaned = commentAggregationFunctions(stringCleaned, ['min(', 'max(', 'count distinct(', 'sum(', 'avg(', 'count(', '@select('])
@@ -109,7 +113,7 @@ def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
             selectColumns = []
             for _, row in alias_fields.iterrows():
                 select = row['Obj Select'].replace(view["Table Name"], view["Orig Table"])
-                select = cleanObjectSelect(select)
+                select = cleanObjectSelect(select, source_table)
                 alias = row['Obj Name']
                 selectColumns.append(f"    {select} AS `{alias}`")
             
@@ -153,7 +157,7 @@ def createSqlOriginalTables(dfTables, dfObjectDetails, dfFKs):
             selectColumns = []
             for _, row in original_fields.iterrows():
                 select = row['Obj Select']
-                select = cleanObjectSelect(select)
+                select = cleanObjectSelect(select, original_view)
                 alias = row['Obj Name']
                 selectColumns.append(f"    {select} AS `{alias}`")
             
