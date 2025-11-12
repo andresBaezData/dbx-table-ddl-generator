@@ -104,7 +104,7 @@ def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
         
         # Find all the fields related with each alias view
         pattern = r'\b' + re.escape(alias_view) + r'\b'
-        alias_fields = dfObjectDetails[dfObjectDetails["Obj Tables"].str.contains(pattern, flags=re.IGNORECASE, regex=True, na=False)].copy()
+        alias_fields = dfObjectDetails[dfObjectDetails["Obj Tables"].str.contains(pattern, flags=re.IGNORECASE, regex=True, na=False)]
 
         # Find all the joins related with each alias view
         alias_joins = dfFKs[(dfFKs["originTable"] ==  alias_view.upper())]
@@ -118,7 +118,7 @@ def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
                 selectColumns.append(f"    {select} AS `{alias}`")
             
             for _, fk in alias_joins.iterrows():
-                select = fk['sql'].split(".")[-1].strip('"').lower() # fk['sql'].replace(alias_view, source_table)
+                select = fk['sql'].replace(alias_view, f'tb_{source_table}').lower()
                 alias = 'id_' + fk['endTable'].lower()
                 selectColumns.append(f"    {select} AS `{alias}`")
             
@@ -151,7 +151,7 @@ def createSqlOriginalTables(dfTables, dfObjectDetails, dfFKs):
         original_fields = dfObjectDetails[dfObjectDetails["Obj Tables"].str.contains(pattern, flags=re.IGNORECASE, regex=True, na=False)]
 
         # Find all the joins related with each alias view
-        original_joins = dfFKs[( dfFKs["originTable"] ==  original_view.upper())].copy()
+        original_joins = dfFKs[( dfFKs["originTable"] ==  original_view.upper())]
 
         if not original_fields.empty:
             selectColumns = []
@@ -162,7 +162,7 @@ def createSqlOriginalTables(dfTables, dfObjectDetails, dfFKs):
                 selectColumns.append(f"    {select} AS `{alias}`")
             
             for _, fk in original_joins.iterrows():
-                select = fk['sql'].split(".")[-1].strip('"').lower()
+                select = fk['sql'].replace(original_view, f'tb_{original_view}').lower()
                 alias = 'id_' + fk['endTable'].lower()
                 selectColumns.append(f"    {select} AS `{alias}`")
             
