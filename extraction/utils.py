@@ -9,6 +9,7 @@ def cleanObjectSelect(field: str, source_table: str):
     # Removes any "@catalog(...)" references
     source_table = source_table.lower()
     stringCleaned = field.lower()
+    stringCleaned = stringCleaned.replace('_x000d_', '')
     stringCleaned = re.sub(r'@catalog\((.*?)\)', r'\1', stringCleaned, flags=re.IGNORECASE)
 
     # Removes catalog and schema names when they are written with double quotes,
