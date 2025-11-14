@@ -84,7 +84,7 @@ def createSqlQueryDerivedTables(dfTables):
             table_name_clean = table['Table Name'].strip('"').lower()
             universe_name = table['Universe Name'].rstrip('.unx').lower()
 
-            sql_text = f"""CREATE OR REPLACE TABLE {{catalog}}.{{schema}}.{table_name_clean}\nTBLPROPERTIES(delta.columnMapping.mode = 'name')\nAS {derivedSql};"""
+            sql_text = f"""CREATE OR REPLACE TABLE {{out_catalog}}.{{out_schema}}.{table_name_clean}\nTBLPROPERTIES(delta.columnMapping.mode = 'name')\nAS {derivedSql};"""
             result.append({'table_name': table_name_clean, 'sql_script': sql_text , 'universe_name': universe_name, 'type': "dt"})
     return pd.DataFrame(result)
 
