@@ -1,5 +1,10 @@
+import os
+import csv
 import re
 import pandas as pd
+import logging
+
+logger = logging.getLogger(__name__)
 
 def cleanObjectSelect(field: str, source_table: str):
     """
@@ -51,7 +56,7 @@ def commentAggregationFunctions(text: str, functionsArr: list):
     textCopy = str(text)
     containsAggr = any(func.lower() in textCopy for func in functionsArr)
     if containsAggr:
-        textCopy = '/*' + textCopy + '*/'
+        textCopy = '--' + textCopy
         textCopy = textCopy.replace('\n', '\n --')
     
     return textCopy
@@ -78,15 +83,51 @@ def createSqlQueryDerivedTables(dfTables):
     """
     dfCopy = dfTables[(dfTables['Table Is Alias'] == 0) & (dfTables['Table Is Derived'] == 1)]
     result = []
+    derived_df = {
+        'UniverseName': [],
+        'FieldName': [],
+        'CatalogName': [],
+        'SchemaName': [],
+        'DbxTableName': [],
+        'DbxFieldName': [],
+        'IsKey': [],
+        'RelationalTable': [],
+        'RelationalFieldName': []
+    }
     if dfCopy is not None and not dfCopy.empty:
+        pattern = re.compile(r'\b((?:FROM|JOIN))\s+([A-Za-z_]\w*)\.([A-Za-z_]\w*)', re.IGNORECASE)
         for _, table in dfCopy.iterrows():
             derivedSql = table['Derived SQL'].replace('_x000D_', '')
+            derivedSql = pattern.sub(lambda m: f"{m.group(1)} {{in_catalog}}.{m.group(2)}.{m.group(3)}", derivedSql)
+            
+            # Extract the derived table name
             table_name_clean = table['Table Name'].strip('"').lower()
-            universe_name = table['Universe Name'].rstrip('.unx').lower()
+            table_name_clean = table_name_clean if table_name_clean.startswith('dt_') else f'dt_{table_name_clean}'
+            
+            # Extract the universe name of each alias view
+            csv_universe_name = table['Universe Name'].removesuffix('.unx')
+            universe_name = table['Universe Name'].removesuffix('.unx').replace(' & ', ' ').replace(' ','_').lower()
+
+            ## CSV information
+            derived_df['UniverseName'].append(csv_universe_name)
+            derived_df['FieldName'].append('None')
+            derived_df['CatalogName'].append('dev_teradata_migration')
+            derived_df['SchemaName'].append(universe_name)
+            derived_df['DbxTableName'].append(f'{table_name_clean}')
+            derived_df['DbxFieldName'].append('None')
+            derived_df['IsKey'].append('None')
+            derived_df['RelationalTable'].append('None')
+            derived_df['RelationalFieldName'].append('None')
 
             sql_text = f"""CREATE OR REPLACE TABLE {{out_catalog}}.{{out_schema}}.{table_name_clean}\nTBLPROPERTIES(delta.columnMapping.mode = 'name')\nAS {derivedSql};"""
-            result.append({'table_name': table_name_clean, 'sql_script': sql_text , 'universe_name': universe_name, 'type': "dt"})
-    return pd.DataFrame(result)
+            result.append({'table_name': table_name_clean, 'sql_script': sql_text , 'universe_name': universe_name, 'type': "dt", 'internal_type': 'derived'})
+    
+    if len(result) > 0:
+        logger.info(f"Derived Tables' SQL queries have been generated")
+    else:
+        logger.info(f"Universe Metadata does not contain Derived Tables")    
+    
+    return pd.DataFrame(result), pd.DataFrame(derived_df)
 
 def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
     """
@@ -94,15 +135,27 @@ def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
     """
     result_rows = []
     alias_views = dfTables[(dfTables['Table Is Alias'] == 1)]
-
+    alias_df = {
+        'UniverseName': [],
+        'FieldName': [],
+        'CatalogName': [],
+        'SchemaName': [],
+        'DbxTableName': [],
+        'DbxFieldName': [],
+        'IsKey': [],
+        'RelationalTable': [],
+        'RelationalFieldName': []
+    }
+    
     for _, view in alias_views.iterrows():
         # Extract schema and table name information of the source and the alias view
         source_schema, source_table = clean_table_name(view["Orig Table"])
         _, alias_view = clean_table_name(view["Table Name"])
 
         # Extract the universe name of each alias view
-        universe_name = view['Universe Name'].rstrip('.unx').lower()
-        
+        csv_universe_name = view['Universe Name'].removesuffix('.unx')
+        universe_name = view['Universe Name'].removesuffix('.unx').replace(' & ', ' ').replace(' ','_').lower()
+
         # Find all the fields related with each alias view
         pattern = r'\b' + re.escape(alias_view) + r'\b'
         alias_fields = dfObjectDetails[dfObjectDetails["Obj Tables"].str.contains(pattern, flags=re.IGNORECASE, regex=True, na=False)]
@@ -117,11 +170,37 @@ def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
                 select = cleanObjectSelect(select, source_table)
                 alias = row['Obj Name']
                 selectColumns.append(f"    {select} AS `{alias}`")
+
+                ## CSV information
+                # Avoid commented fields
+                if select[0:2] == '--':
+                    continue
+                alias_df['UniverseName'].append(csv_universe_name)
+                alias_df['FieldName'].append(alias)
+                alias_df['CatalogName'].append('dev_teradata_migration')
+                alias_df['SchemaName'].append(universe_name)
+                alias_df['DbxTableName'].append(f'vw_{alias_view.lower()}')
+                alias_df['DbxFieldName'].append(alias)
+                alias_df['IsKey'].append('no')
+                alias_df['RelationalTable'].append('None')
+                alias_df['RelationalFieldName'].append('None')
             
             for _, fk in alias_joins.iterrows():
-                select = fk['sql'].replace(alias_view, f'tb_{source_table}').lower()
+                select = fk['sql'].upper().replace(alias_view.upper(), f'tb_{source_table}').lower()
                 alias = 'id_' + fk['endTable'].lower()
                 selectColumns.append(f"    {select} AS `{alias}`")
+
+                # CSV information
+                csv_info = fk['sql_csv'].split('.')
+                alias_df['UniverseName'].append(csv_universe_name)
+                alias_df['FieldName'].append('None')
+                alias_df['CatalogName'].append('dev_teradata_migration')
+                alias_df['SchemaName'].append(universe_name)
+                alias_df['DbxTableName'].append(f'vw_{alias_view.lower()}')
+                alias_df['DbxFieldName'].append(alias)
+                alias_df['IsKey'].append('yes')
+                alias_df['RelationalTable'].append(f'vw_{csv_info[0].lower()}')
+                alias_df['RelationalFieldName'].append(f'id_{alias_view.lower()}')
             
             selectClause = "\n" + ",\n".join(selectColumns)
 
@@ -129,23 +208,43 @@ def createSqlQueryAliasTables(dfTables, dfObjectDetails, dfFKs):
             from_table = f'{source_schema}.{source_table}' if source_schema != None else source_table
             from_table = from_table.lower()
             sql_script = f"""CREATE OR REPLACE VIEW {{out_catalog}}.{{out_schema}}.{"vw_" + alias_view} AS SELECT {selectClause} \n FROM {{in_catalog}}.{from_table};"""
-            result_rows.append({'table_name': f"vw_{alias_view}", 'sql_script': sql_script, 'universe_name': universe_name, 'type': 'view_report'})
+            result_rows.append({'table_name': f"vw_{alias_view}", 'sql_script': sql_script, 'universe_name': universe_name, 'type': 'view_report', 'internal_type': 'alias'})
+        
+        else:
+            logger.info(f"{alias_view} hasn't been created as a cell because it hasn't objects related in the business layer.")
+    
+    if len(result_rows) > 0:
+        logger.info(f"Alias Tables' SQL queries have been generated")
+    else:
+        logger.info(f"Universe Metadata does not contain Alias Tables")  
 
-    return pd.DataFrame(result_rows)
+    return pd.DataFrame(result_rows), pd.DataFrame(alias_df)
 
 def createSqlOriginalTables(dfTables, dfObjectDetails, dfFKs):
     """
     Creates the DDL SQL for each original view in Databricks.
     """
-
     result_rows = []
     original_views = dfTables[(dfTables['Table Is Alias'] == 0) & (dfTables['Table Is Derived'] == 0)]
+    original_df = {
+        'UniverseName': [],
+        'FieldName': [],
+        'CatalogName': [],
+        'SchemaName': [],
+        'DbxTableName': [],
+        'DbxFieldName': [],
+        'IsKey': [],
+        'RelationalTable': [],
+        'RelationalFieldName': []
+    }
+
     for _, table in original_views.iterrows():
         # Extract schema and table name information of the original view
         original_schema, original_view = clean_table_name(table["Table Name"])
         
         # Extract the universe name of each original view
-        universe_name = table['Universe Name'].rstrip('.unx').lower()
+        csv_universe_name = table['Universe Name'].removesuffix('.unx')
+        universe_name = table['Universe Name'].removesuffix('.unx').replace(' & ', ' ').replace(' ','_').lower()
 
         # Find all the fields related with each original view 
         pattern = r'\b' + re.escape( table["Table Name"] ) + r'\b'
@@ -161,11 +260,37 @@ def createSqlOriginalTables(dfTables, dfObjectDetails, dfFKs):
                 select = cleanObjectSelect(select, original_view)
                 alias = row['Obj Name']
                 selectColumns.append(f"    {select} AS `{alias}`")
+
+                ## CSV information
+                # Avoid commented fields
+                if select[0:2] == '--':
+                    continue
+                original_df['UniverseName'].append(csv_universe_name)
+                original_df['FieldName'].append(alias)
+                original_df['CatalogName'].append('dev_teradata_migration')
+                original_df['SchemaName'].append(universe_name)
+                original_df['DbxTableName'].append(f'vw_{original_view.lower()}')
+                original_df['DbxFieldName'].append(alias)
+                original_df['IsKey'].append('no')
+                original_df['RelationalTable'].append('None')
+                original_df['RelationalFieldName'].append('None')
             
             for _, fk in original_joins.iterrows():
-                select = fk['sql'].replace(original_view, f'tb_{original_view}').lower()
+                select = fk['sql'].upper().replace(original_view.upper(), f'tb_{original_view}').lower()
                 alias = 'id_' + fk['endTable'].lower()
                 selectColumns.append(f"    {select} AS `{alias}`")
+
+                # CSV information
+                csv_info = fk['sql_csv'].split('.')
+                original_df['UniverseName'].append(csv_universe_name)
+                original_df['FieldName'].append('None')
+                original_df['CatalogName'].append('dev_teradata_migration')
+                original_df['SchemaName'].append(universe_name)
+                original_df['DbxTableName'].append(f'vw_{original_view.lower()}')
+                original_df['DbxFieldName'].append(alias)
+                original_df['IsKey'].append('yes')
+                original_df['RelationalTable'].append(f'vw_{csv_info[0].lower()}')
+                original_df['RelationalFieldName'].append(f'id_{original_view.lower()}')
             
             selectClause = "\n" + ",\n".join(selectColumns)
 
@@ -173,9 +298,13 @@ def createSqlOriginalTables(dfTables, dfObjectDetails, dfFKs):
             originalTableClean = f'{original_schema}.{original_view}' if original_schema != None else original_view
             originalTableClean = originalTableClean.lower()
             sql_script = f"""CREATE OR REPLACE VIEW {{out_catalog}}.{{out_schema}}.{"vw_" + original_view} AS SELECT {selectClause} \n FROM {{in_catalog}}.{originalTableClean};"""
-            result_rows.append({'table_name': f"vw_{original_view}", 'sql_script': sql_script, 'universe_name': universe_name, 'type': 'view_report'})
-    return pd.DataFrame(result_rows)
+            result_rows.append({'table_name': f"vw_{original_view}", 'sql_script': sql_script, 'universe_name': universe_name, 'type': 'view_report', 'internal_type': 'original'})
+        else:
+            logger.info(f"{original_view} hasn't been created as a cell because it hasn't objects related in the business layer.")
+    
+    if len(result_rows) > 0:
+        logger.info(f"Original Tables' SQL queries have been generated")
+    else:
+        logger.info(f"Universe Metadata does not contain Original Tables") 
 
-
-
-
+    return pd.DataFrame(result_rows), pd.DataFrame(original_df)

@@ -1,18 +1,20 @@
+import logging
 import pandas as pd
 from collections import defaultdict
 from typing import Dict, List
 from .utils import createSqlQueryDerivedTables, createSqlQueryAliasTables, createSqlOriginalTables
 
+logger = logging.getLogger(__name__)
+
 class Extraction():
     def __init__(self, path_file):
         self.input_path = path_file
         self.file_columns = ["Table Details", "Joins", "Object Details"]
-        self.excel_file = pd.ExcelFile(self.input_path)
+        self.excel_file = self.input_path
         self.excel_info: Dict[str, pd.DataFrame] = {}
         self.table_details: pd.DataFrame = None
         self.joins: pd.DataFrame = None
         self.objects_detials: pd.DataFrame = None
-        self._read_file()
     
     def _read_file(self):
         """
@@ -21,6 +23,7 @@ class Extraction():
         for col in self.file_columns:
             df = pd.read_excel(self.excel_file, sheet_name= col, engine="openpyxl", header= 1)
             self.excel_info[col] = df
+        logger.info(f"File read successfully")
     
     def _build_sql(self, table_fields: List, table_name: str) -> str:
         """
@@ -40,6 +43,10 @@ class Extraction():
         Parses SQL join expressions to identify relationships between tables and builds a 
         DataFrame showing each pair of related tables along with the SQL used to join them.
         """
+        if pd.isna(self.joins["Join Expression"][0]):
+            logger.info(f"There is no information in the tab Joins in the excel. Please check the tab and populate it if it's necessary.")    
+            return pd.DataFrame(columns= ['originTable', 'endTable', 'sql'])
+        
         final_relationships = []
         for expression in self.joins["Join Expression"]:
             fields_by_table = defaultdict(list)
@@ -60,13 +67,13 @@ class Extraction():
 
                 left_arr = [p.strip().strip('"') for p in left.split('.')]
                 right_arr = [p.strip().strip('"') for p in right.split('.')]
-                
+                    
                 fields_by_table[left_arr[-2]].append(left_arr[-1])
                 fields_by_table[right_arr[-2]].append(right_arr[-1])
 
             if len(fields_by_table) == 2:
                 table_a_name, table_b_name = list(fields_by_table.keys())
-                
+                    
                 # Generating SQL for both tables
                 sql_a = self._build_sql(fields_by_table, table_a_name)
                 sql_b = self._build_sql(fields_by_table, table_b_name)
@@ -77,16 +84,20 @@ class Extraction():
                     final_relationships.append({
                         'originTable': table_a_name,
                         'endTable': table_b_name,
-                        'sql': sql_a
+                        'sql': sql_a,
+                        'sql_csv': sql_b
                     })
                     # direccion 2: B -> A
                     final_relationships.append({
                         'originTable': table_b_name,
                         'endTable': table_a_name,
-                        'sql': sql_b
+                        'sql': sql_b,
+                        'sql_csv': sql_a
                     })
 
-        return pd.DataFrame(final_relationships)
+        if len(final_relationships) > 0:
+            logger.info(f"SQL expressions have been generated successfully using Joins")
+            return pd.DataFrame(final_relationships)
     
     def get_info(self):
         """
@@ -96,6 +107,7 @@ class Extraction():
         """
         # Saving excel information
         self._read_file()
+        logger.info(f"Processing Universe Metadata") 
         self.table_details = self.excel_info['Table Details']
         self.joins = self.excel_info['Joins']
         self.objects_details = self.excel_info['Object Details']
@@ -104,8 +116,21 @@ class Extraction():
         # filter_details = self.objects_details[(self.objects_details['Obj Where'].notna())].copy()
 
         foreignKeys = self._join_expressions()
-        derived_tables = createSqlQueryDerivedTables(self.table_details)
-        alias_tables = createSqlQueryAliasTables(self.table_details, objects_details_filtered,foreignKeys)
-        original_tables = createSqlOriginalTables(self.table_details, objects_details_filtered, foreignKeys)
+        
+        # Derived tables
+        derived_tables, derived_csv = createSqlQueryDerivedTables(self.table_details)
+        tables_info = derived_tables.copy()
 
-        return derived_tables, alias_tables, original_tables
+        # Alias tables
+        alias_tables, alias_csv = createSqlQueryAliasTables(self.table_details, objects_details_filtered, foreignKeys)
+        tables_info = pd.concat([tables_info, alias_tables], ignore_index= True)
+
+        # Original tables
+        original_tables, original_csv = createSqlOriginalTables(self.table_details, objects_details_filtered, foreignKeys)
+        tables_info = pd.concat([tables_info, original_tables], ignore_index= True)
+
+        # CSV information
+        csv = pd.concat([derived_csv, alias_csv, original_csv], ignore_index= True)
+
+        return tables_info, csv
+            
